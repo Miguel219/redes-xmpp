@@ -29,7 +29,7 @@ class Client(slixmpp.ClientXMPP):
 
 
     async def session_start(self, event):
-        self.send_presence()
+        self.send_presence(pstatus='Conectado')
         await self.get_roster()
         
         self.logged = True
@@ -53,8 +53,8 @@ Ingresa el número de la opción que deseas realizar:
             except: 
                 print("Ingresa una opción correcta")                
       
+            self.send_presence(pstatus='Conectado')
             await self.get_roster()
-            self.send_presence()
 
             if(appMenu == 1):
                 await self.displayContactsList()
@@ -116,7 +116,7 @@ Ingresa el número de la opción que deseas realizar:
         roster = self.client_roster.groups()
         for group in roster:
             for jid in roster[group]:
-                status = ''
+                status = 'Desconectado'
                 conexions = self.client_roster.presence(jid)                           
                 for answer, pres in conexions.items():
                     if pres['status']:
@@ -153,7 +153,8 @@ Ingresa el número de la opción que deseas realizar:
         roster = self.client_roster.groups()
         for group in roster:
             for jid in roster[group]:
-                status = info = ''
+                status = 'Desconectado'
+                info = ''
                 sub = self.client_roster[jid]['subscription']
                 name = self.client_roster[jid]['name']
                 conexions = self.client_roster.presence(jid)                           
