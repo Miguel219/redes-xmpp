@@ -1,0 +1,2 @@
+DEBUG = False
+SLEEP = 3
