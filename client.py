@@ -116,11 +116,7 @@ Ingresa el número de la opción que deseas realizar:
     def message(self, msg):
         print("Tienes un mensaje nuevo:")
         if msg['type'] in ('chat'):
-            recipient = msg['to']
-            body = msg['body']
-            
-            #print the message and the recipient
-            print(str(recipient) +  ": " + str(body))
+            print(f"{msg['from'].username}: {msg['body']}")
     
     def groupchat_message(self, msg):
         if(str(msg['from']).split('/')[1]!=self.groupName):
