@@ -1,5 +1,6 @@
 import slixmpp
 from slixmpp.xmlstream.asyncio import asyncio
+from slixmpp.xmlstream.stanzabase import ET 
 import pandas as pd
 from tabulate import tabulate
 from settings import *
@@ -14,6 +15,8 @@ class Client(slixmpp.ClientXMPP):
         
         self.add_event_handler("session_start", self.session_start)
         self.add_event_handler("changed_status", self.wait_for_presences)
+        self.add_event_handler("message", self.message)
+        self.add_event_handler("groupchat_message", self.groupchat_message)
 
         self.register_plugin('xep_0030') # Service Discovery
         self.register_plugin('xep_0004') # Data forms
@@ -24,12 +27,14 @@ class Client(slixmpp.ClientXMPP):
         self.register_plugin('xep_0096') # Jabber Search
         
         self.logged = False
+        self.groupName = ''
+        self.status = 'Activo'
         self.received = set()
         self.presences_received = asyncio.Event()
 
 
     async def session_start(self, event):
-        self.send_presence(pstatus='Conectado')
+        self.send_presence(pstatus=self.status)
         await self.get_roster()
         
         self.logged = True
@@ -51,9 +56,10 @@ Ingresa el número de la opción que deseas realizar:
 --------------------------------------------------
 >"""))
             except: 
+                appMenu = 0
                 print("Ingresa una opción correcta")                
       
-            self.send_presence(pstatus='Conectado')
+            self.send_presence(pstatus=self.status)
             await self.get_roster()
 
             if(appMenu == 1):
@@ -66,13 +72,13 @@ Ingresa el número de la opción que deseas realizar:
                 await self.displayContactInformation()
             
             elif(appMenu == 4):
-                print("4")
+                self.sendMessage()
             
             elif(appMenu == 5):
-                print("5")
+                self.sendMessageToGroup()
             
             elif(appMenu == 6):
-                print("6")
+                await self.definePresenceMessage()
             
             elif(appMenu == 7):
                 print("Cerrando sesión...")
@@ -80,7 +86,7 @@ Ingresa el número de la opción que deseas realizar:
             elif(appMenu == 8):
                 print("8")
             
-            else:
+            elif(appMenu != 0):
                 print("Ingresa una opción correcta")
         
         #Se cierra sesion
@@ -107,6 +113,23 @@ Ingresa el número de la opción que deseas realizar:
         else:
             self.presences_received.clear()
 
+    def message(self, msg):
+        print("Tienes un mensaje nuevo:")
+        if msg['type'] in ('chat'):
+            recipient = msg['to']
+            body = msg['body']
+            
+            #print the message and the recipient
+            print(str(recipient) +  ": " + str(body))
+    
+    def groupchat_message(self, msg):
+        if(str(msg['from']).split('/')[1]!=self.groupName):
+            print(str(msg['from']).split('/')[1] + ": " + msg['body'])
+            message = input("Write the message: ")
+            self.send_message(mto=msg['from'].bare,
+                              mbody=message,
+                              mtype='groupchat')
+
     async def displayContactsList(self):
 
         contacts = []
@@ -116,7 +139,7 @@ Ingresa el número de la opción que deseas realizar:
         roster = self.client_roster.groups()
         for group in roster:
             for jid in roster[group]:
-                status = 'Desconectado'
+                status = 'Inactivo'
                 conexions = self.client_roster.presence(jid)                           
                 for answer, pres in conexions.items():
                     if pres['status']:
@@ -153,16 +176,11 @@ Ingresa el número de la opción que deseas realizar:
         roster = self.client_roster.groups()
         for group in roster:
             for jid in roster[group]:
-                status = 'Desconectado'
-                info = ''
+                status = 'Inactivo'
                 sub = self.client_roster[jid]['subscription']
                 name = self.client_roster[jid]['name']
                 conexions = self.client_roster.presence(jid)                           
                 for res, pres in conexions.items():
-                    show = 'available'
-                    if pres['show']:
-                        show = pres['show']
-                        info = str(res) + ' (' + str(show) + ')'
                     if pres['status']:
                         status = pres['status']
                 if contact == jid:
@@ -170,10 +188,49 @@ Ingresa el número de la opción que deseas realizar:
                         jid,
                         name,
                         sub,
-                        status,
-                        info
+                        status
                     ])
                 contacts
 
-            df = pd.DataFrame(contacts, columns = ['JID', 'Nombre', 'Suscripción', 'Estado', 'Res'])
+            df = pd.DataFrame(contacts, columns = ['JID', 'Nombre', 'Suscripción', 'Estado'])
             print(tabulate(df, headers='keys', tablefmt='psql'))
+    
+    def sendMessage(self):
+
+        contact = str(input("JID del usuario al que deseas enviar mensaje: "))
+        print("Mensaje:")
+        message = str(input(">"))
+        
+        self.send_message(mto=contact,
+                          mbody=message,
+                          mtype='chat')
+    
+    def sendMessageToGroup(self):
+
+        self.groupName = str(input("Nombre del grupo: "))
+        groupjid = self.groupName + "@conference.alumchat.xyz"
+        print("Mensaje:")
+        message = str(input(">"))
+        
+        self.send_message(mto=groupjid,
+                          mbody=message,
+                          mtype='groupchat')
+    
+    def sendMessageToGroup(self):
+
+        self.groupName = str(input("Nombre del grupo: "))
+        groupjid = self.groupName + "@conference.alumchat.xyz"
+        print("Mensaje:")
+        message = str(input(">"))
+        
+        self.send_message(mto=groupjid,
+                          mbody=message,
+                          mtype='groupchat')
+    
+    async def definePresenceMessage(self):
+
+        self.status = str(input("Estado: "))
+        self.nickName = str(input("Apodo: "))
+        
+        self.send_presence(pstatus=self.status, pnick=self.nickName)
+        await self.get_roster()
