@@ -10,6 +10,13 @@ class Client(slixmpp.ClientXMPP):
     def __init__(self, jid, password, login = True):
         slixmpp.ClientXMPP.__init__(self, jid, password)
 
+        self.logged = False
+        self.groupName = ''
+        self.groupjid = ''
+        self.status = 'Activo'
+        self.received = set()
+        self.presences_received = asyncio.Event()
+
         if not login:
             self.add_event_handler("register", self.register)
         
@@ -25,12 +32,6 @@ class Client(slixmpp.ClientXMPP):
         self.register_plugin('xep_0199') # XMPP Ping
         self.register_plugin('xep_0045') # Mulit-User Chat (MUC)
         self.register_plugin('xep_0096') # Jabber Search
-        
-        self.logged = False
-        self.groupName = ''
-        self.status = 'Activo'
-        self.received = set()
-        self.presences_received = asyncio.Event()
 
 
     async def session_start(self, event):
@@ -40,7 +41,7 @@ class Client(slixmpp.ClientXMPP):
         self.logged = True
         appMenu = 0
         
-        while appMenu != 7 and appMenu != 8:
+        while appMenu != 9 and appMenu != 8:
             try:
                 appMenu = int(input(""" 
 --------------------------------------------------
@@ -50,9 +51,10 @@ Ingresa el número de la opción que deseas realizar:
 3. Mostrar detalles de un contacto de un usuario
 4. Enviar un mensaje directo
 5. Enviar un mensaje a un grupo
-6. Definir mensaje de presencia
-7. Cerrar Sesión
-8. Eliminar mi usuario
+6. Crear un nuevo grupo
+7. Definir mensaje de presencia
+8. Cerrar Sesión
+9. Eliminar mi usuario
 --------------------------------------------------
 >"""))
             except: 
@@ -78,13 +80,16 @@ Ingresa el número de la opción que deseas realizar:
                 self.sendMessageToGroup()
             
             elif(appMenu == 6):
-                await self.definePresenceMessage()
+                self.createNewGroup()
             
             elif(appMenu == 7):
-                print("Cerrando sesión...")
+                await self.definePresenceMessage()
             
             elif(appMenu == 8):
-                print("8")
+                print("Cerrando sesión...")
+            
+            elif(appMenu == 9):
+                await self.deleteUser()
             
             elif(appMenu != 0):
                 print("Ingresa una opción correcta")
@@ -114,17 +119,29 @@ Ingresa el número de la opción que deseas realizar:
             self.presences_received.clear()
 
     def message(self, msg):
-        print("Tienes un mensaje nuevo:")
-        if msg['type'] in ('chat'):
+        print("----------------Notificación----------------------")
+        if msg['type']  == 'chat':
             print(f"{msg['from'].username}: {msg['body']}")
+        
+        elif msg['type'] == 'groupchat':
+            print(f"Grupo ({msg['from'].username}): {msg['body']}")
+        # else :
+        #     print(msg)
+        print("--------------------------------------------------")
+            
     
     def groupchat_message(self, msg):
-        if(str(msg['from']).split('/')[1]!=self.groupName):
-            print(str(msg['from']).split('/')[1] + ": " + msg['body'])
-            message = input("Write the message: ")
-            self.send_message(mto=msg['from'].bare,
-                              mbody=message,
-                              mtype='groupchat')
+        if(msg['from'].username != self.groupName):
+            print(f"Grupo ({msg['from'].username}): {msg['body']}")
+
+    def muc_online(self, presence):
+        # print(presence)
+        if presence['muc']['nick'] != self.groupName:
+            self.send_message(mto=presence['from'].bare,
+            mbody="Hola, %s %s" % (presence['muc']['role'],
+            presence['muc']['nick']),
+            mtype='groupchat')
+
 
     async def displayContactsList(self):
 
@@ -203,23 +220,29 @@ Ingresa el número de la opción que deseas realizar:
     
     def sendMessageToGroup(self):
 
-        self.groupName = str(input("Nombre del grupo: "))
-        groupjid = self.groupName + "@conference.alumchat.xyz"
+        groupName = str(input("Nombre del grupo: "))
+        groupjid = groupName + "@conference.alumchat.xyz"
         print("Mensaje:")
         message = str(input(">"))
+
+        self.plugin['xep_0045'].join_muc(groupjid+"/"+groupName, groupName)
         
         self.send_message(mto=groupjid,
                           mbody=message,
                           mtype='groupchat')
     
-    def sendMessageToGroup(self):
+    def createNewGroup(self):
 
         self.groupName = str(input("Nombre del grupo: "))
-        groupjid = self.groupName + "@conference.alumchat.xyz"
+        self.groupjid = self.groupName + "@conference.alumchat.xyz"
         print("Mensaje:")
         message = str(input(">"))
+
+        self.add_event_handler("muc::%s::got_online" % self.groupjid, self.muc_online)
+
+        self.plugin['xep_0045'].join_muc(self.groupjid, self.groupName)
         
-        self.send_message(mto=groupjid,
+        self.send_message(mto=self.groupjid,
                           mbody=message,
                           mtype='groupchat')
     
@@ -230,3 +253,15 @@ Ingresa el número de la opción que deseas realizar:
         
         self.send_presence(pstatus=self.status, pnick=self.nickName)
         await self.get_roster()
+    
+    async def deleteUser(self):
+
+        resp = self.Iq()
+        resp['type'] = 'set'
+        resp['register']['remove'] = True
+
+        try:
+            await resp.send()
+            print("Usuario eliminado con éxito!")
+        except:
+            print("No se puede eliminar el usuario en este momento")
