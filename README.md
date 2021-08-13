@@ -24,12 +24,11 @@ José Miguel Castañeda <br> Carnet:18161
 
 1. Mostrar todos tus contactos y su estado
 2. Agregar un usuario a tus contactos
-3. Mostrar detalles de un contacto de un usuario
+3. Mostrar detalles de un contacto
 4. Enviar un mensaje directo
 5. Enviar un mensaje a un grupo
-6. Crear un nuevo grupo
-7. Definir mensaje de presencia
-8. Cerrar Sesión
-9. Eliminar mi usuario
+6. Definir mensaje de presencia
+7. Cerrar Sesión
+8. Eliminar mi usuario
 
 <p>Las notificaciones de los mensajes recibidos se muestran luego de realizar cualquier acción en la aplicación.</p>

@@ -1,6 +1,7 @@
 import slixmpp
 from slixmpp.xmlstream.asyncio import asyncio
 from slixmpp.xmlstream.stanzabase import ET 
+from aioconsole import ainput
 import pandas as pd
 from tabulate import tabulate
 from settings import *
@@ -11,7 +12,7 @@ class Client(slixmpp.ClientXMPP):
         slixmpp.ClientXMPP.__init__(self, jid, password)
 
         self.logged = False
-        self.groupName = ''
+        self.nickName = ''
         self.groupjid = ''
         self.status = 'Activo'
         self.received = set()
@@ -31,30 +32,37 @@ class Client(slixmpp.ClientXMPP):
         self.register_plugin('xep_0077') # In-band Registration
         self.register_plugin('xep_0199') # XMPP Ping
         self.register_plugin('xep_0045') # Mulit-User Chat (MUC)
+        self.register_plugin('xep_0085') # Chat State Notifications
         self.register_plugin('xep_0096') # Jabber Search
+        self.register_plugin('xep_0059')
+        self.register_plugin('xep_0060')
+        self.register_plugin('xep_0071')
+        self.register_plugin('xep_0128')
+        self.register_plugin('xep_0363')
 
 
     async def session_start(self, event):
         self.send_presence(pstatus=self.status)
         await self.get_roster()
         
+        self.nickName = str(await ainput("Ingresa tu apodo con el que se te vera en todos los grupos: "))
+
         self.logged = True
         appMenu = 0
         
-        while appMenu != 9 and appMenu != 8:
+        while appMenu != 7 and appMenu != 8:
             try:
-                appMenu = int(input(""" 
+                appMenu = int(await ainput(""" 
 --------------------------------------------------
 Ingresa el número de la opción que deseas realizar:
 1. Mostrar todos tus contactos y su estado
 2. Agregar un usuario a tus contactos
-3. Mostrar detalles de un contacto de un usuario
+3. Mostrar detalles de un contacto
 4. Enviar un mensaje directo
 5. Enviar un mensaje a un grupo
-6. Crear un nuevo grupo
-7. Definir mensaje de presencia
-8. Cerrar Sesión
-9. Eliminar mi usuario
+6. Definir mensaje de presencia
+7. Cerrar Sesión
+8. Eliminar mi usuario
 --------------------------------------------------
 >"""))
             except: 
@@ -68,27 +76,24 @@ Ingresa el número de la opción que deseas realizar:
                 await self.displayContactsList()
 
             elif(appMenu == 2):
-                self.addContact()
+                await self.addContact()
             
             elif(appMenu == 3):
                 await self.displayContactInformation()
             
             elif(appMenu == 4):
-                self.sendMessage()
+                await self.sendMessage()
             
             elif(appMenu == 5):
-                self.sendMessageToGroup()
+                await self.sendMessageToGroup()
             
             elif(appMenu == 6):
-                self.createNewGroup()
-            
-            elif(appMenu == 7):
                 await self.definePresenceMessage()
             
-            elif(appMenu == 8):
+            elif(appMenu == 7):
                 print("Cerrando sesión...")
             
-            elif(appMenu == 9):
+            elif(appMenu == 8):
                 await self.deleteUser()
             
             elif(appMenu != 0):
@@ -119,28 +124,27 @@ Ingresa el número de la opción que deseas realizar:
             self.presences_received.clear()
 
     def message(self, msg):
-        print("----------------Notificación----------------------")
-        if msg['type']  == 'chat':
+        if msg['type']  in ('normal', 'chat'):
+            print("----------------Notificación----------------------")
             print(f"{msg['from'].username}: {msg['body']}")
+            print("--------------------------------------------------")
         
         elif msg['type'] == 'groupchat':
+            print("----------------Notificación----------------------")
             print(f"Grupo ({msg['from'].username}): {msg['body']}")
-        # else :
-        #     print(msg)
-        print("--------------------------------------------------")
+            print("--------------------------------------------------")
+        else :
+            print(msg)
             
     
     def groupchat_message(self, msg):
-        if(msg['from'].username != self.groupName):
-            print(f"Grupo ({msg['from'].username}): {msg['body']}")
+        if(msg['mucnick'] != self.nickName and self.nickName in msg['body']):
+            print(f"Se te mencionó en el grupo ({msg['from'].username})")
 
     def muc_online(self, presence):
         # print(presence)
-        if presence['muc']['nick'] != self.groupName:
-            self.send_message(mto=presence['from'].bare,
-            mbody="Hola, %s %s" % (presence['muc']['role'],
-            presence['muc']['nick']),
-            mtype='groupchat')
+        if presence['muc']['nick'] != self.nickName:
+            print(f"{presence['muc']['nick']} esta activo en el grupo ({presence['from'].bare})")
 
 
     async def displayContactsList(self):
@@ -171,9 +175,9 @@ Ingresa el número de la opción que deseas realizar:
             print(tabulate(df, headers='keys', tablefmt='psql'))
     
     
-    def addContact(self):
+    async def addContact(self):
         try:
-            newContact = str(input("JID del usuario: "))
+            newContact = str(await ainput("JID del usuario: "))
             self.send_presence_subscription(pto=newContact)
             print('Se agrego el usuario al contacto')
         except:
@@ -181,7 +185,7 @@ Ingresa el número de la opción que deseas realizar:
     
     async def displayContactInformation(self):
 
-        contact = str(input("JID del usuario: "))
+        contact = str(await ainput("JID del usuario: "))
         contacts = []
         
         await asyncio.sleep(SLEEP)
@@ -208,48 +212,102 @@ Ingresa el número de la opción que deseas realizar:
             df = pd.DataFrame(contacts, columns = ['JID', 'Nombre', 'Suscripción', 'Estado'])
             print(tabulate(df, headers='keys', tablefmt='psql'))
     
-    def sendMessage(self):
+    async def sendMessage(self):
 
-        contact = str(input("JID del usuario al que deseas enviar mensaje: "))
-        print("Mensaje:")
-        message = str(input(">"))
+        contact = str(await ainput("JID del usuario al que deseas enviar mensaje: "))
         
-        self.send_message(mto=contact,
-                          mbody=message,
-                          mtype='chat')
-    
-    def sendMessageToGroup(self):
-
-        groupName = str(input("Nombre del grupo: "))
-        groupjid = groupName + "@conference.alumchat.xyz"
-        print("Mensaje:")
-        message = str(input(">"))
-
-        self.plugin['xep_0045'].join_muc(groupjid+"/"+groupName, groupName)
+        option = 0
+        try:
+            option = int(await ainput(""" 
+--------------------------------------------------
+Ingresa el número de la opción que deseas realizar:
+1. Enviar un mensaje 
+2. Enviar un archivo
+--------------------------------------------------
+>"""))
+        except: 
+            print("Ingresa una opción correcta")
         
-        self.send_message(mto=groupjid,
-                          mbody=message,
-                          mtype='groupchat')
+        if option == 1:
+            print("Mensaje:")
+            message = str(await ainput(">")) 
+            
+            self.send_message(mto=contact,
+                            mbody=message,
+                            mtype='chat')
+
+        elif option == 2:
+            filename = str(await ainput("Dirección del archivo: "))
+            domain = str(await ainput("Dominio para subir el archivo: "))
+            
+            try:
+                print('Enviando el archivo...')
+                url = await self['xep_0363'].upload_file(
+                    filename, domain=domain, timeout=10
+                )
+                html = (
+                    f'<body xmlns="http://www.w3.org/1999/xhtml">'
+                    f'<a href="{url}">{url}</a></body>'
+                )
+                message = self.make_message(mto=contact, mbody=url, mhtml=html)
+                message['oob']['url'] = message
+                message.send() 
+                print('Se envio el archivo correctamente')
+            except:
+                print('No se logro subir el archivo')
+               
     
-    def createNewGroup(self):
+    async def sendMessageToGroup(self):
 
-        self.groupName = str(input("Nombre del grupo: "))
-        self.groupjid = self.groupName + "@conference.alumchat.xyz"
-        print("Mensaje:")
-        message = str(input(">"))
-
+        self.groupjid = str(await ainput("Nombre del grupo: "))
+      
         self.add_event_handler("muc::%s::got_online" % self.groupjid, self.muc_online)
 
-        self.plugin['xep_0045'].join_muc(self.groupjid, self.groupName)
+        self.plugin['xep_0045'].join_muc(self.groupjid, self.nickName)
+
+        option = 0
+        try:
+            option = int(await ainput(""" 
+--------------------------------------------------
+Ingresa el número de la opción que deseas realizar:
+1. Enviar un mensaje 
+2. Enviar un archivo
+--------------------------------------------------
+>"""))
+        except: 
+            print("Ingresa una opción correcta")
         
-        self.send_message(mto=self.groupjid,
-                          mbody=message,
-                          mtype='groupchat')
+        if option == 1:
+            print("Mensaje:")
+            message = str(await ainput(">"))
+        
+            self.send_message(mto=self.groupjid,
+                            mbody=message,
+                            mtype='groupchat')
+
+        elif option == 2:
+            filename = str(await ainput("Dirección del archivo: "))
+            domain = str(await ainput("Dominio para subir el archivo: "))
+            
+            try:
+                print('Enviando el archivo...')
+                url = await self['xep_0363'].upload_file(
+                    filename, domain=domain, timeout=10
+                )
+                html = (
+                    f'<body xmlns="http://www.w3.org/1999/xhtml">'
+                    f'<a href="{url}">{url}</a></body>'
+                )
+                message = self.make_message(mto=self.groupjid, mbody=url, mhtml=html, mtype='groupchat')
+                message['oob']['url'] = message
+                message.send() 
+                print('Se envio el archivo correctamente')
+            except:
+                print('No se logro subir el archivo')
     
     async def definePresenceMessage(self):
 
-        self.status = str(input("Estado: "))
-        self.nickName = str(input("Apodo: "))
+        self.status = str(await ainput("Estado: "))
         
         self.send_presence(pstatus=self.status, pnick=self.nickName)
         await self.get_roster()
